@@ -935,10 +935,14 @@
 
         // Tags with a numeric rule get a fixed target count:
         // equal to N -> exactly N, less than N -> N-1, more than N -> N+1.
+        const RELATIVE_OPS = ["less", "more", "equal"];
+        const byName = {};
+        enabled.forEach((t) => { byName[t.name] = t; });
         const targets = {};
         let fixedSum = 0;
         const relative = [];
         const capped = [];
+        const fixed = new Set(); // tags whose target must hold exactly
         enabled.forEach((t) => {
           const v = Number.isFinite(t.value) ? Math.max(0, Math.floor(t.value)) : 0;
           let target;
@@ -956,7 +960,39 @@
           }
           targets[t.name] = target;
           fixedSum += target;
+          fixed.add(t.name);
         });
+        // A relative rule (less/more/equal than another tag) whose reference
+        // chain ends in a fixed target resolves to a concrete count:
+        // less -> ref-1, more -> ref+1, equal -> ref. Chains that end at a
+        // no-rule tag (or cycle) keep the soft weight-based behavior below.
+        const resolveConcrete = (t, seen) => {
+          if (fixed.has(t.name)) return targets[t.name];
+          if (!RELATIVE_OPS.includes(t.op) || !t.ref || seen.has(t.name)) return undefined;
+          seen.add(t.name);
+          const refTag = byName[t.ref];
+          if (!refTag) return undefined;
+          const base = resolveConcrete(refTag, seen);
+          if (base === undefined) return undefined;
+          if (t.op === "less") return Math.max(0, base - 1);
+          if (t.op === "more") return base + 1;
+          return base;
+        };
+        for (let i = relative.length - 1; i >= 0; i--) {
+          const t = relative[i];
+          const resolved = resolveConcrete(t, new Set());
+          if (resolved === undefined) continue;
+          let target = resolved;
+          const max = maxFor(t);
+          if (target > max) {
+            capped.push(t.name + " (" + target + " → " + max + ")");
+            target = max;
+          }
+          targets[t.name] = target;
+          fixedSum += target;
+          fixed.add(t.name);
+          relative.splice(i, 1);
+        }
         if (capped.length) {
           alert("These targets exceed what the consecutive-day rules allow and were capped:\n" + capped.join("\n"));
         }
@@ -986,20 +1022,36 @@
           // Probability is the squared remaining allowance: a tag at its
           // target is never picked again, and behind-schedule tags get an
           // urgency boost so they aren't starved by end-of-month blocking.
-          const picks = weightedSample(pool, perDay, (t) => {
+          // Soft (weight-based) tags keep a tiny residual weight past their
+          // target so THEY absorb any surplus slots when every target is
+          // met — fixed-target tags drop to 0 and stay exact.
+          const weightOf = (t) => {
             const r = targets[t.name] - counts[t.name];
-            return r > 0 ? r * r : 0;
-          });
+            if (r > 0) return r * r;
+            return fixed.has(t.name) ? 0 : 0.01;
+          };
+          // If the pool can't fill the day from positive-weight candidates
+          // (i.e. it's mostly fixed tags already at their target), pull in
+          // the blocked tags that still have allowance plus the soft tags
+          // (which always keep a residual weight). Surplus picks then land
+          // on soft tags instead of overshooting a fixed target, and an
+          // under-target fixed tag isn't starved just because it appeared
+          // yesterday. The consecutive-day rule gives way before exact
+          // counts do.
+          if (pool.filter((t) => weightOf(t) > 0).length < perDay) {
+            const extra = enabled.filter((t) => !pool.includes(t) &&
+              (!fixed.has(t.name) || weightOf(t) > 0));
+            const widened = [...pool, ...extra];
+            if (extra.length && widened.length >= perDay) pool = widened;
+          }
+          const picks = weightedSample(pool, perDay, weightOf);
           picks.forEach((t) => { counts[t.name]++; });
           schedule.push(picks.map((t) => t.name));
           previous = new Set(picks.map((t) => t.name));
         });
 
-        // Repair pass: end-of-month blocking can leave numeric-rule tags a
-        // little off their targets. Swap occupants so numeric rules hold.
-        const NUMERIC_OPS = ["equalN", "lessN", "moreN"];
-        const byName = {};
-        enabled.forEach((t) => { byName[t.name] = t; });
+        // Repair pass: end-of-month blocking can leave fixed-target tags a
+        // little off their targets. Swap occupants so the targets hold.
         const canPlace = (name, i) => {
           if (schedule[i].includes(name)) return false;
           const t = byName[name];
@@ -1008,16 +1060,21 @@
           const next = schedule[i + 1] || [];
           return !prev.includes(name) && !next.includes(name);
         };
-        // 1) Pull overshot numeric tags (uniform fallback may exceed caps)
+        // 1) Pull overshot fixed tags (uniform fallback may exceed caps)
         //    back down, replacing them with under-target tags.
-        enabled.filter((t) => NUMERIC_OPS.includes(t.op)).forEach((t) => {
+        enabled.filter((t) => fixed.has(t.name)).forEach((t) => {
           while (counts[t.name] > targets[t.name] + 1e-9) {
             let done = false;
             for (let i = 0; i < schedule.length && !done; i++) {
               const idx = schedule[i].indexOf(t.name);
               if (idx === -1) continue;
-              const rep = enabled.find((u) => u.name !== t.name &&
+              let rep = enabled.find((u) => u.name !== t.name &&
                 counts[u.name] < targets[u.name] - 1e-9 && canPlace(u.name, i));
+              if (!rep) {
+                // No under-target tag fits: swap in any soft tag instead —
+                // soft targets may be exceeded, fixed ones may not.
+                rep = enabled.find((u) => !fixed.has(u.name) && canPlace(u.name, i));
+              }
               if (!rep) continue;
               schedule[i][idx] = rep.name;
               counts[t.name]--;
@@ -1027,9 +1084,9 @@
             if (!done) break;
           }
         });
-        // 2) Fill undershot numeric tags by swapping out the relative tag
+        // 2) Fill undershot fixed tags by swapping out the relative tag
         //    with the biggest surplus on a day where placement is valid.
-        enabled.filter((t) => NUMERIC_OPS.includes(t.op)).forEach((t) => {
+        enabled.filter((t) => fixed.has(t.name)).forEach((t) => {
           while (counts[t.name] < targets[t.name] - 1e-9) {
             let done = false;
             for (let i = 0; i < schedule.length && !done; i++) {
@@ -1037,7 +1094,7 @@
               let best = -1;
               let bestSurplus = 0;
               schedule[i].forEach((name, idx) => {
-                if (NUMERIC_OPS.includes(byName[name].op)) return;
+                if (fixed.has(name)) return;
                 const surplus = counts[name] - (targets[name] || 0);
                 if (surplus > bestSurplus) {
                   best = idx;
