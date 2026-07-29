@@ -4,6 +4,10 @@ A single-file, offline-capable editable monthly calendar for planning social-med
 post schedules. There is no build step, no dependencies, and no server. Everything
 is inside `august-2026-editable-calendar.html`.
 
+## Screenshots
+
+![Calendar Automation Demo](scheduler-demo.jpg)
+
 ## Usage
 
 Open `august-2026-editable-calendar.html` in any browser (works straight from
