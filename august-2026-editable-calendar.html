@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editable Calendar</title>
+  <style>
+    :root {
+      --page-width: 1181px;
+      --page-height: 741px;
+      --top-height: 120px;
+      --weekday-height: 31px;
+      --line: #222;
+      --blue: #4d80bb;
+      --gray: #d9d9d9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .calendar-page {
+      width: var(--page-width);
+      height: var(--page-height);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .top {
+      position: relative;
+      height: var(--top-height);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+    }
+
+    .title {
+      margin: 0;
+      text-align: center;
+      font-size: 60px;
+      line-height: 1;
+      font-weight: 900;
+      color: #000;
+      letter-spacing: 0;
+      outline: none;
+      white-space: nowrap;
+    }
+
+    .title-nav {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      font-size: 24px;
+      line-height: 1;
+      padding: 0 0 4px;
+      cursor: pointer;
+      background: #fff;
+      color: #000;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .title-nav:hover {
+      background: #eee;
+    }
+
+    .mini {
+      position: absolute;
+      top: 4px;
+      width: 224px;
+      color: #000;
+    }
+
+    .mini.left {
+      left: 4px;
+    }
+
+    .mini.right {
+      right: 4px;
+    }
+
+    .mini-title {
+      text-align: center;
+      font-size: 13px;
+      line-height: 15px;
+      font-weight: 700;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-auto-rows: 14px;
+      text-align: center;
+      font-size: 12px;
+      line-height: 14px;
+      font-weight: 600;
+    }
+
+    .mini span {
+      height: 14px;
+    }
+
+    .weekdays {
+      height: var(--weekday-height);
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-top: 1px solid #0f0f0f;
+      border-bottom: 2px solid #0f0f0f;
+      background: var(--blue);
+    }
+
+    .weekday {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
+      border-right: 1px solid #0f0f0f;
+      outline: none;
+    }
+
+    .weekday:last-child {
+      border-right: 0;
+    }
+
+    .grid {
+      height: calc(var(--page-height) - var(--top-height) - var(--weekday-height));
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      /* minmax(0, 1fr): rows must not grow with their content, or tall
+         cells push the last row off the fixed-height page. */
+      grid-template-rows: repeat(6, minmax(0, 1fr));
+    }
+
+    .day {
+      position: relative;
+      min-width: 0;
+      padding: var(--day-pad-top, 18px) 10px 5px 10px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .day:nth-child(7n) {
+      border-right: 0;
+    }
+
+    .day:nth-last-child(-n + 7) {
+      border-bottom: 0;
+    }
+
+    .day.muted {
+      background: var(--gray);
+    }
+
+    .date {
+      position: absolute;
+      top: 3px;
+      right: 5px;
+      color: #000;
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 1;
+    }
+
+    .muted .date {
+      color: #555;
+    }
+
+    .events {
+      width: 100%;
+      min-height: 73px;
+      color: #000;
+      font-size: var(--events-size, 18px);
+      line-height: var(--events-lh, 1.25);
+      font-weight: 500;
+      outline: none;
+      overflow: hidden;
+    }
+
+    .events:focus,
+    .title:focus,
+    .weekday:focus {
+      outline: 2px solid rgba(77, 128, 187, 0.45);
+      outline-offset: -2px;
+    }
+
+    #settings-toggle {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+      font-size: 14px;
+      padding: 8px 14px;
+      cursor: pointer;
+      background: var(--blue);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+    }
+
+    #settings-panel {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      z-index: 10;
+      width: 560px;
+      max-height: 80vh;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      font-size: 14px;
+    }
+
+    #settings-panel h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .month-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .month-row select {
+      flex: 1;
+    }
+
+    .month-row input {
+      width: 80px;
+    }
+
+    .tag-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .tag-row .tag-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      padding: 2px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    .tag-row select {
+      font-size: 12px;
+      max-width: 130px;
+    }
+
+    .tag-row .rule-value {
+      width: 52px;
+      font-size: 12px;
+    }
+
+    .tag-row .remove {
+      border: 0;
+      background: none;
+      cursor: pointer;
+      color: #c00;
+      font-size: 15px;
+      padding: 0 2px;
+    }
+
+    .add-row {
+      display: flex;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .add-row input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .consecutive {
+      display: block;
+      margin: 10px 0;
+    }
+
+    #tags-per-day {
+      width: 52px;
+    }
+
+    #consecutive-tags {
+      margin: 0 0 10px 22px;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+
+    #consecutive-tags .ct-hint {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+
+    #consecutive-tags label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .actions button {
+      padding: 8px;
+      cursor: pointer;
+    }
+
+    .actions button.danger {
+      color: #b00;
+    }
+
+    @page {
+      size: 1181px 741px;
+      margin: 0;
+    }
+
+    @media print {
+      body {
+        display: block;
+      }
+
+      .calendar-page {
+        border: 1px solid var(--line);
+      }
+
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="calendar-page" aria-label="Editable calendar">
+    <section class="top" aria-hidden="false">
+      <div class="mini left" id="mini-left" aria-label="Previous month mini calendar"></div>
+      <button class="title-nav no-print" id="prev-month" type="button" aria-label="Previous month">‹</button>
+      <h1 class="title" id="title" contenteditable="true" spellcheck="false">AUGUST 2026</h1>
+      <button class="title-nav no-print" id="next-month" type="button" aria-label="Next month">›</button>
+      <div class="mini right" id="mini-right" aria-label="Next month mini calendar"></div>
+    </section>
+
+    <nav class="weekdays" aria-label="Weekdays">
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-sunday">SUNDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-monday">MONDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-tuesday">TUESDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-wednesday">WEDNESDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-thursday">THURSDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-friday">FRIDAY</div>
+      <div class="weekday" contenteditable="true" spellcheck="false" data-save-key="weekday-saturday">SATURDAY</div>
+    </nav>
+
+    <section class="grid" id="grid" aria-label="Month grid"></section>
+  </main>
+
+  <div class="no-print" id="schedule-ui">
+    <button id="settings-toggle" type="button">⚙ Schedule</button>
+    <div id="settings-panel" hidden>
+      <h2>Schedule settings</h2>
+      <div class="month-row">
+        <select id="month-select" aria-label="Month"></select>
+        <input id="year-input" type="number" min="1900" max="2100" step="1" aria-label="Year">
+      </div>
+      <div id="tag-rows"></div>
+      <div class="add-row">
+        <input id="new-tag" type="text" placeholder="New tag name">
+        <button id="add-tag" type="button">Add</button>
+      </div>
+      <label class="consecutive">
+        <input id="allow-consecutive" type="checkbox">
+        Allow same tag on consecutive days
+      </label>
+      <div id="consecutive-tags" hidden></div>
+      <label class="consecutive">
+        Tags per day:
+        <input id="tags-per-day" type="number" min="1" max="6" step="1">
+      </label>
+      <div class="actions">
+        <button id="generate" type="button">Generate schedule</button>
+        <button id="download-png" type="button">Download PNG</button>
+        <button id="clear-month" type="button" class="danger">Clear current month</button>
+        <button id="clear-all" type="button" class="danger">Clear all months</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const prefix = "august-2026-editable-calendar:";
+      const stateKey = prefix + "state";
+      const MONTHS = ["January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"];
+
+      const DEFAULT_TAGS = [
+        { name: "Product A", enabled: true, op: "none", ref: "" },
+        { name: "Product B", enabled: true, op: "none", ref: "" },
+        { name: "Product C", enabled: true, op: "none", ref: "" },
+        { name: "Product D", enabled: true, op: "none", ref: "" },
+        { name: "Product E", enabled: true, op: "none", ref: "" },
+        { name: "Product F", enabled: true, op: "none", ref: "" },
+        { name: "Product G", enabled: true, op: "none", ref: "" },
+        { name: "Product H", enabled: true, op: "none", ref: "" },
+        { name: "Product I", enabled: true, op: "none", ref: "" },
+        { name: "Product J", enabled: true, op: "none", ref: "" },
+        { name: "Product K", enabled: true, op: "none", ref: "" }
+      ];
+
+      let state = {
+        year: 2026,
+        month: 7,
+        tags: DEFAULT_TAGS,
+        allowConsecutive: false,
+        consecutiveTags: DEFAULT_TAGS.map((t) => t.name),
+        tagsPerDay: 3
+      };
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(stateKey));
+        if (stored && Number.isInteger(stored.year) && Number.isInteger(stored.month) &&
+            stored.month >= 0 && stored.month <= 11 && Array.isArray(stored.tags) && stored.tags.length) {
+          state = stored;
+        }
+      } catch (e) {
+        /* keep defaults */
+      }
+      if (!Array.isArray(state.consecutiveTags)) {
+        state.consecutiveTags = state.tags.map((t) => t.name);
+      }
+      if (!Number.isInteger(state.tagsPerDay) || state.tagsPerDay < 1) {
+        state.tagsPerDay = 3;
+      } else if (state.tagsPerDay > 6) {
+        state.tagsPerDay = 6;
+      }
+
+      const pad = (n) => String(n).padStart(2, "0");
+      const eventsKey = (y, m, d) => prefix + "events-" + y + "-" + pad(m + 1) + "-" + pad(d);
+      const titleKey = (y, m) => prefix + "title-" + y + "-" + pad(m + 1);
+      const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+
+      // One-time migration of the original August 2026 save keys.
+      // Old keys are deleted afterwards so cleared data can never resurrect.
+      (function migrate() {
+        const legacyKeys = [];
+        for (let d = 1; d <= 31; d++) {
+          const oldKey = prefix + "aug-" + d;
+          const newKey = eventsKey(2026, 7, d);
+          const oldVal = window.localStorage.getItem(oldKey);
+          if (oldVal !== null) {
+            if (window.localStorage.getItem(newKey) === null) {
+              window.localStorage.setItem(newKey, oldVal);
+            }
+            legacyKeys.push(oldKey);
+          }
+        }
+        const oldTitle = window.localStorage.getItem(prefix + "title");
+        if (oldTitle !== null) {
+          if (window.localStorage.getItem(titleKey(2026, 7)) === null) {
+            window.localStorage.setItem(titleKey(2026, 7), oldTitle);
+          }
+          legacyKeys.push(prefix + "title");
+        }
+        // Legacy spillover keys from the first version (always empty).
+        for (let d = 26; d <= 31; d++) legacyKeys.push(prefix + "jul-" + d);
+        for (let d = 1; d <= 5; d++) legacyKeys.push(prefix + "sep-" + d);
+        legacyKeys.forEach((key) => window.localStorage.removeItem(key));
+      })();
+
+      function saveState() {
+        window.localStorage.setItem(stateKey, JSON.stringify(state));
+      }
+
+      function attachEditable(element, getKey) {
+        const stored = window.localStorage.getItem(getKey());
+        if (stored !== null) {
+          element.innerHTML = stored;
+        }
+        element.addEventListener("input", () => {
+          window.localStorage.setItem(getKey(), element.innerHTML);
+        });
+        element.addEventListener("paste", (event) => {
+          event.preventDefault();
+          const text = (event.clipboardData || window.clipboardData).getData("text/plain");
+          document.execCommand("insertText", false, text);
+        });
+      }
+
+      // Weekday headers: static, persisted once.
+      document.querySelectorAll(".weekday[data-save-key]").forEach((el) => {
+        attachEditable(el, () => prefix + el.dataset.saveKey);
+      });
+
+      const titleEl = document.getElementById("title");
+      const gridEl = document.getElementById("grid");
+      const miniLeftEl = document.getElementById("mini-left");
+      const miniRightEl = document.getElementById("mini-right");
+
+      function renderMini(el, y, m) {
+        el.innerHTML = "";
+        const title = document.createElement("div");
+        title.className = "mini-title";
+        title.textContent = MONTHS[m].toUpperCase() + " " + y;
+        el.appendChild(title);
+
+        const grid = document.createElement("div");
+        grid.className = "mini-grid";
+        ["S", "M", "T", "W", "T", "F", "S"].forEach((letter) => {
+          const span = document.createElement("span");
+          span.textContent = letter;
+          grid.appendChild(span);
+        });
+        const offset = new Date(y, m, 1).getDay();
+        const dim = daysInMonth(y, m);
+        const cells = Math.ceil((offset + dim) / 7) * 7;
+        for (let i = 0; i < cells; i++) {
+          const span = document.createElement("span");
+          const dayNum = i - offset + 1;
+          span.textContent = dayNum >= 1 && dayNum <= dim ? String(dayNum) : "";
+          grid.appendChild(span);
+        }
+        el.appendChild(grid);
+      }
+
+      // Events text sizing per tags-per-day: every tag line must fit inside
+      // the fixed-height day cell (rows are minmax(0, 1fr); .day clips
+      // overflow), so more tags means smaller text. Used by both render()
+      // (via CSS vars) and downloadPNG().
+      function eventsFont(perDay) {
+        if (perDay <= 3) return { size: 18, lh: 1.25, padTop: 18 };
+        if (perDay === 4) return { size: 15, lh: 1.2, padTop: 18 };
+        if (perDay === 5) return { size: 13, lh: 1.15, padTop: 16 };
+        return { size: 11.5, lh: 1.15, padTop: 14 };
+      }
+
+      function render() {
+        const y = state.year;
+        const m = state.month;
+
+        const ef = eventsFont(state.tagsPerDay);
+        gridEl.style.setProperty("--events-size", ef.size + "px");
+        gridEl.style.setProperty("--events-lh", String(ef.lh));
+        gridEl.style.setProperty("--day-pad-top", ef.padTop + "px");
+
+        const defaultTitle = MONTHS[m].toUpperCase() + " " + y;
+        const storedTitle = window.localStorage.getItem(titleKey(y, m));
+        titleEl.innerHTML = storedTitle !== null ? storedTitle : defaultTitle;
+        document.title = MONTHS[m] + " " + y + " Editable Calendar";
+
+        const prevM = m === 0 ? 11 : m - 1;
+        const prevY = m === 0 ? y - 1 : y;
+        const nextM = m === 11 ? 0 : m + 1;
+        const nextY = m === 11 ? y + 1 : y;
+        renderMini(miniLeftEl, prevY, prevM);
+        renderMini(miniRightEl, nextY, nextM);
+
+        gridEl.innerHTML = "";
+        const offset = new Date(y, m, 1).getDay();
+        const dim = daysInMonth(y, m);
+        const prevDim = daysInMonth(prevY, prevM);
+
+        for (let i = 0; i < 42; i++) {
+          const dayNum = i - offset + 1;
+          const article = document.createElement("article");
+          article.className = "day";
+          const dateDiv = document.createElement("div");
+          dateDiv.className = "date";
+          const eventsDiv = document.createElement("div");
+          eventsDiv.className = "events";
+          eventsDiv.contentEditable = "true";
+          eventsDiv.spellcheck = false;
+
+          if (dayNum < 1) {
+            article.classList.add("muted");
+            const d = prevDim + dayNum;
+            dateDiv.textContent = String(d);
+            eventsDiv.dataset.saveKey = eventsKey(prevY, prevM, d);
+          } else if (dayNum > dim) {
+            article.classList.add("muted");
+            const d = dayNum - dim;
+            dateDiv.textContent = String(d);
+            eventsDiv.dataset.saveKey = eventsKey(nextY, nextM, d);
+          } else {
+            dateDiv.textContent = String(dayNum);
+            eventsDiv.dataset.saveKey = eventsKey(y, m, dayNum);
+          }
+
+          article.appendChild(dateDiv);
+          article.appendChild(eventsDiv);
+          gridEl.appendChild(article);
+          attachEditable(eventsDiv, () => eventsDiv.dataset.saveKey);
+        }
+      }
+
+      attachEditable(titleEl, () => titleKey(state.year, state.month));
+
+      // ---- settings panel ----
+
+      const toggle = document.getElementById("settings-toggle");
+      const panel = document.getElementById("settings-panel");
+      const rowsEl = document.getElementById("tag-rows");
+      const consecutiveEl = document.getElementById("allow-consecutive");
+      const monthSelect = document.getElementById("month-select");
+      const yearInput = document.getElementById("year-input");
+
+      toggle.addEventListener("click", () => {
+        panel.hidden = !panel.hidden;
+      });
+
+      // Clicking anywhere outside the settings UI closes the panel.
+      document.addEventListener("click", (event) => {
+        if (panel.hidden) return;
+        if (!document.getElementById("schedule-ui").contains(event.target)) {
+          panel.hidden = true;
+        }
+      });
+
+      MONTHS.forEach((name, i) => {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = name;
+        monthSelect.appendChild(option);
+      });
+      monthSelect.value = String(state.month);
+      yearInput.value = String(state.year);
+
+      function goToMonth(year, month) {
+        state.year = year;
+        state.month = month;
+        monthSelect.value = String(month);
+        yearInput.value = String(year);
+        saveState();
+        render();
+      }
+
+      function shiftMonth(delta) {
+        const total = state.year * 12 + state.month + delta;
+        const year = Math.floor(total / 12);
+        if (year < 1900 || year > 2100) return;
+        goToMonth(year, ((total % 12) + 12) % 12);
+      }
+
+      document.getElementById("prev-month").addEventListener("click", () => shiftMonth(-1));
+      document.getElementById("next-month").addEventListener("click", () => shiftMonth(1));
+
+      monthSelect.addEventListener("change", () => {
+        goToMonth(state.year, parseInt(monthSelect.value, 10));
+      });
+      yearInput.addEventListener("change", () => {
+        const y = parseInt(yearInput.value, 10);
+        if (!Number.isInteger(y) || y < 1900 || y > 2100) {
+          yearInput.value = String(state.year);
+          return;
+        }
+        goToMonth(y, state.month);
+      });
+
+      function renderRows() {
+        rowsEl.innerHTML = "";
+        state.tags.forEach((tag, index) => {
+          const row = document.createElement("div");
+          row.className = "tag-row";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = tag.enabled;
+          cb.title = "Include in schedule";
+          cb.addEventListener("change", () => {
+            tag.enabled = cb.checked;
+            saveState();
+          });
+
+          const name = document.createElement("input");
+          name.type = "text";
+          name.className = "tag-name";
+          name.value = tag.name;
+          name.title = "Tag name (edit to rename)";
+          // Renaming propagates to other tags' ref rules and the
+          // consecutive-days list so the rules keep pointing at the tag.
+          name.addEventListener("change", () => {
+            const oldName = tag.name;
+            const newName = name.value.trim();
+            const dup = newName.toLowerCase() !== oldName.toLowerCase() &&
+              state.tags.some((t) => t.name.toLowerCase() === newName.toLowerCase());
+            if (!newName || dup) {
+              name.value = oldName;
+              return;
+            }
+            if (newName === oldName) return;
+            tag.name = newName;
+            state.tags.forEach((t) => { if (t.ref === oldName) t.ref = newName; });
+            state.consecutiveTags = state.consecutiveTags.map((n) => (n === oldName ? newName : n));
+            saveState();
+            renderRows();
+            renderConsecutiveTags();
+          });
+
+          const op = document.createElement("select");
+          [["none", "no rule"], ["less", "less than"], ["more", "more than"], ["equal", "equal to"],
+            ["lessN", "less than (value)"], ["moreN", "more than (value)"], ["equalN", "equal to (value)"]].forEach(([value, label]) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            op.appendChild(option);
+          });
+          op.value = tag.op;
+
+          const ref = document.createElement("select");
+          state.tags.filter((t) => t.name !== tag.name).forEach((t) => {
+            const option = document.createElement("option");
+            option.value = t.name;
+            option.textContent = t.name;
+            ref.appendChild(option);
+          });
+          ref.value = tag.ref;
+
+          const num = document.createElement("input");
+          num.type = "number";
+          num.min = "0";
+          num.max = "93";
+          num.step = "1";
+          num.className = "rule-value";
+          num.value = String(Number.isFinite(tag.value) ? tag.value : 5);
+          num.title = "Times this tag appears in the month";
+          num.addEventListener("change", () => {
+            const v = parseInt(num.value, 10);
+            tag.value = Number.isInteger(v) && v >= 0 ? v : 0;
+            num.value = String(tag.value);
+            saveState();
+          });
+
+          op.addEventListener("change", () => {
+            tag.op = op.value;
+            if (["less", "more", "equal"].includes(tag.op) &&
+                !state.tags.some((t) => t.name === tag.ref && t.name !== tag.name)) {
+              const other = state.tags.find((t) => t.name !== tag.name);
+              tag.ref = other ? other.name : "";
+            }
+            if (tag.op.endsWith("N") && !Number.isFinite(tag.value)) {
+              tag.value = 5;
+            }
+            saveState();
+            renderRows();
+          });
+          ref.addEventListener("change", () => {
+            tag.ref = ref.value;
+            saveState();
+          });
+          ref.style.visibility = ["less", "more", "equal"].includes(tag.op) ? "" : "hidden";
+          num.style.visibility = tag.op.endsWith("N") ? "" : "hidden";
+
+          const rm = document.createElement("button");
+          rm.type = "button";
+          rm.className = "remove";
+          rm.textContent = "×";
+          rm.title = "Remove tag";
+          rm.addEventListener("click", () => {
+            state.tags.splice(index, 1);
+            state.tags.forEach((t) => {
+              if (t.ref === tag.name) {
+                t.ref = "";
+                t.op = "none";
+              }
+            });
+            state.consecutiveTags = state.consecutiveTags.filter((n) => n !== tag.name);
+            saveState();
+            renderRows();
+            renderConsecutiveTags();
+          });
+
+          row.append(cb, name, op, ref, num, rm);
+          rowsEl.appendChild(row);
+        });
+      }
+
+      const consecutiveTagsEl = document.getElementById("consecutive-tags");
+
+      function renderConsecutiveTags() {
+        consecutiveTagsEl.hidden = !state.allowConsecutive;
+        consecutiveTagsEl.innerHTML = "";
+        if (!state.allowConsecutive) return;
+
+        const hint = document.createElement("span");
+        hint.className = "ct-hint";
+        hint.textContent = "Tags allowed on back-to-back days:";
+        consecutiveTagsEl.appendChild(hint);
+
+        state.tags.forEach((tag) => {
+          const label = document.createElement("label");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = state.consecutiveTags.includes(tag.name);
+          cb.addEventListener("change", () => {
+            if (cb.checked && !state.consecutiveTags.includes(tag.name)) {
+              state.consecutiveTags.push(tag.name);
+            } else if (!cb.checked) {
+              state.consecutiveTags = state.consecutiveTags.filter((n) => n !== tag.name);
+            }
+            saveState();
+          });
+          const name = document.createElement("span");
+          name.textContent = tag.name;
+          label.append(cb, name);
+          consecutiveTagsEl.appendChild(label);
+        });
+      }
+
+      document.getElementById("add-tag").addEventListener("click", () => {
+        const input = document.getElementById("new-tag");
+        const name = input.value.trim();
+        if (!name) return;
+        if (state.tags.some((t) => t.name.toLowerCase() === name.toLowerCase())) return;
+        state.tags.push({ name, enabled: true, op: "none", ref: "" });
+        state.consecutiveTags.push(name);
+        input.value = "";
+        saveState();
+        renderRows();
+        renderConsecutiveTags();
+      });
+
+      consecutiveEl.checked = state.allowConsecutive;
+      consecutiveEl.addEventListener("change", () => {
+        state.allowConsecutive = consecutiveEl.checked;
+        saveState();
+        renderConsecutiveTags();
+      });
+
+      const tagsPerDayInput = document.getElementById("tags-per-day");
+      tagsPerDayInput.value = String(state.tagsPerDay);
+      tagsPerDayInput.addEventListener("change", () => {
+        const v = parseInt(tagsPerDayInput.value, 10);
+        state.tagsPerDay = Number.isInteger(v) ? Math.max(1, Math.min(6, v)) : 3;
+        tagsPerDayInput.value = String(state.tagsPerDay);
+        saveState();
+        render();
+      });
+
+      // Resolve less/more/equal rules into numeric weights by relaxation.
+      // On conflicting cycles the later rule in the list wins.
+      function computeWeights(list) {
+        const w = {};
+        list.forEach((t) => { w[t.name] = 10; });
+        for (let pass = 0; pass < 25; pass++) {
+          list.forEach((t) => {
+            if (!["less", "more", "equal"].includes(t.op) || !t.ref || w[t.ref] === undefined) return;
+            if (t.op === "less") w[t.name] = Math.min(w[t.name], w[t.ref] - 4);
+            else if (t.op === "more") w[t.name] = Math.max(w[t.name], w[t.ref] + 4);
+            else if (t.op === "equal") w[t.name] = w[t.ref];
+          });
+        }
+        list.forEach((t) => { w[t.name] = Math.max(1, Math.min(50, w[t.name])); });
+        return w;
+      }
+
+      function weightedSample(pool, count, weightFn) {
+        const picks = [];
+        const remaining = [...pool];
+        while (picks.length < count && remaining.length > 0) {
+          const total = remaining.reduce((sum, t) => sum + weightFn(t), 0);
+          let idx;
+          if (total <= 0) {
+            // Every candidate is at its target: fall back to uniform random.
+            idx = Math.floor(Math.random() * remaining.length);
+          } else {
+            let r = Math.random() * total;
+            idx = remaining.length - 1;
+            for (let i = 0; i < remaining.length; i++) {
+              r -= weightFn(remaining[i]);
+              if (r <= 0) {
+                idx = i;
+                break;
+              }
+            }
+          }
+          picks.push(remaining.splice(idx, 1)[0]);
+        }
+        return picks;
+      }
+
+      document.getElementById("generate").addEventListener("click", () => {
+        const enabled = state.tags.filter((t) => t.enabled);
+        const perDay = state.tagsPerDay;
+        if (enabled.length < perDay) {
+          alert("Enable at least " + perDay + " tags (each day needs " + perDay + " different tags).");
+          return;
+        }
+        const weights = computeWeights(enabled);
+        const counts = {};
+        enabled.forEach((t) => { counts[t.name] = 0; });
+        const dayEls = document.querySelectorAll(".day:not(.muted) .events");
+        const dayCount = dayEls.length;
+        const totalSlots = perDay * dayCount;
+        // A tag blocked from back-to-back days can appear at most every
+        // other day; consecutive-allowed tags can appear daily.
+        const maxFor = (t) => (state.allowConsecutive && state.consecutiveTags.includes(t.name))
+          ? dayCount
+          : Math.ceil(dayCount / 2);
+
+        // Tags with a numeric rule get a fixed target count:
+        // equal to N -> exactly N, less than N -> N-1, more than N -> N+1.
+        const targets = {};
+        let fixedSum = 0;
+        const relative = [];
+        const capped = [];
+        enabled.forEach((t) => {
+          const v = Number.isFinite(t.value) ? Math.max(0, Math.floor(t.value)) : 0;
+          let target;
+          if (t.op === "equalN") target = v;
+          else if (t.op === "lessN") target = Math.max(0, v - 1);
+          else if (t.op === "moreN") target = v + 1;
+          else {
+            relative.push(t);
+            return;
+          }
+          const max = maxFor(t);
+          if (target > max) {
+            capped.push(t.name + " (" + target + " → " + max + ")");
+            target = max;
+          }
+          targets[t.name] = target;
+          fixedSum += target;
+        });
+        if (capped.length) {
+          alert("These targets exceed what the consecutive-day rules allow and were capped:\n" + capped.join("\n"));
+        }
+        // If fixed targets overbook the month, scale them down proportionally.
+        if (fixedSum > totalSlots) {
+          Object.keys(targets).forEach((n) => { targets[n] *= totalSlots / fixedSum; });
+          fixedSum = totalSlots;
+        }
+        // Remaining slots go to relative-rule tags, split by their weights.
+        const totalWeight = relative.reduce((sum, t) => sum + weights[t.name], 0);
+        relative.forEach((t) => {
+          targets[t.name] = Math.min(maxFor(t), totalWeight > 0
+            ? (totalSlots - fixedSum) * weights[t.name] / totalWeight
+            : (totalSlots - fixedSum) / Math.max(1, relative.length));
+        });
+        let previous = new Set();
+        const schedule = [];
+
+        dayEls.forEach((el) => {
+          // Tags not allowed on back-to-back days are excluded after being used.
+          const blocked = state.allowConsecutive
+            ? new Set([...previous].filter((n) => !state.consecutiveTags.includes(n)))
+            : previous;
+          let pool = enabled;
+          const filtered = enabled.filter((t) => !blocked.has(t.name));
+          if (filtered.length >= perDay) pool = filtered;
+          // Probability is the squared remaining allowance: a tag at its
+          // target is never picked again, and behind-schedule tags get an
+          // urgency boost so they aren't starved by end-of-month blocking.
+          const picks = weightedSample(pool, perDay, (t) => {
+            const r = targets[t.name] - counts[t.name];
+            return r > 0 ? r * r : 0;
+          });
+          picks.forEach((t) => { counts[t.name]++; });
+          schedule.push(picks.map((t) => t.name));
+          previous = new Set(picks.map((t) => t.name));
+        });
+
+        // Repair pass: end-of-month blocking can leave numeric-rule tags a
+        // little off their targets. Swap occupants so numeric rules hold.
+        const NUMERIC_OPS = ["equalN", "lessN", "moreN"];
+        const byName = {};
+        enabled.forEach((t) => { byName[t.name] = t; });
+        const canPlace = (name, i) => {
+          if (schedule[i].includes(name)) return false;
+          const t = byName[name];
+          if (state.allowConsecutive && state.consecutiveTags.includes(name)) return true;
+          const prev = schedule[i - 1] || [];
+          const next = schedule[i + 1] || [];
+          return !prev.includes(name) && !next.includes(name);
+        };
+        // 1) Pull overshot numeric tags (uniform fallback may exceed caps)
+        //    back down, replacing them with under-target tags.
+        enabled.filter((t) => NUMERIC_OPS.includes(t.op)).forEach((t) => {
+          while (counts[t.name] > targets[t.name] + 1e-9) {
+            let done = false;
+            for (let i = 0; i < schedule.length && !done; i++) {
+              const idx = schedule[i].indexOf(t.name);
+              if (idx === -1) continue;
+              const rep = enabled.find((u) => u.name !== t.name &&
+                counts[u.name] < targets[u.name] - 1e-9 && canPlace(u.name, i));
+              if (!rep) continue;
+              schedule[i][idx] = rep.name;
+              counts[t.name]--;
+              counts[rep.name]++;
+              done = true;
+            }
+            if (!done) break;
+          }
+        });
+        // 2) Fill undershot numeric tags by swapping out the relative tag
+        //    with the biggest surplus on a day where placement is valid.
+        enabled.filter((t) => NUMERIC_OPS.includes(t.op)).forEach((t) => {
+          while (counts[t.name] < targets[t.name] - 1e-9) {
+            let done = false;
+            for (let i = 0; i < schedule.length && !done; i++) {
+              if (!canPlace(t.name, i)) continue;
+              let best = -1;
+              let bestSurplus = 0;
+              schedule[i].forEach((name, idx) => {
+                if (NUMERIC_OPS.includes(byName[name].op)) return;
+                const surplus = counts[name] - (targets[name] || 0);
+                if (surplus > bestSurplus) {
+                  best = idx;
+                  bestSurplus = surplus;
+                }
+              });
+              if (best === -1) continue;
+              counts[schedule[i][best]]--;
+              schedule[i][best] = t.name;
+              counts[t.name]++;
+              done = true;
+            }
+            if (!done) break;
+          }
+        });
+
+        // Write the finished schedule to the grid and persist it.
+        dayEls.forEach((el, i) => {
+          el.innerHTML = schedule[i].join("<br>");
+          window.localStorage.setItem(el.dataset.saveKey, el.innerHTML);
+        });
+      });
+
+      // Text lines of an events cell, exactly as the user sees them.
+      // innerText reflects the rendered line breaks whether the cell was
+      // written by the generator (<br>) or hand-edited afterwards — browsers
+      // turn Enter into <div> blocks, which splitting innerHTML on <br>
+      // alone would silently merge into one line. Fall back to the raw
+      // HTML split where innerText is unavailable.
+      function eventLines(eventsEl) {
+        if (typeof eventsEl.innerText === "string") {
+          return eventsEl.innerText.replace(/\u00a0/g, " ").split("\n");
+        }
+        return eventsEl.innerHTML.split(/<br\s*\/?>/i).map((line) => {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = line;
+          return tmp.textContent;
+        });
+      }
+
+      // Greedy word wrap, mirroring how the browser wraps .events text
+      // inside the day cell instead of letting the canvas clip it.
+      function wrapLines(ctx, lines, maxWidth) {
+        const out = [];
+        lines.forEach((line) => {
+          if (ctx.measureText(line).width <= maxWidth) {
+            out.push(line);
+            return;
+          }
+          let cur = "";
+          line.split(" ").forEach((word) => {
+            const next = cur ? cur + " " + word : word;
+            if (cur && ctx.measureText(next).width > maxWidth) {
+              out.push(cur);
+              cur = word;
+            } else {
+              cur = next;
+            }
+          });
+          out.push(cur);
+        });
+        return out;
+      }
+
+      // Draw the calendar directly onto a canvas (works in every browser,
+      // unlike SVG foreignObject which taints the canvas in some browsers).
+      function downloadPNG() {
+        if (document.activeElement) document.activeElement.blur();
+        const W = 1181, H = 741, TOP = 120, WEEKDAY_H = 31;
+        const GRID_Y = TOP + WEEKDAY_H;
+        const COLS = 7, ROWS = 6;
+        const colW = W / COLS;
+        const rowH = (H - GRID_Y) / ROWS;
+
+        const canvas = document.createElement("canvas");
+        // Render at 3x so the downloaded image is sharp on high-DPI screens.
+        const SCALE = 3;
+        canvas.width = W * SCALE;
+        canvas.height = H * SCALE;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(SCALE, SCALE);
+
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "#222";
+        ctx.lineWidth = 1;
+
+        // Title
+        ctx.fillStyle = "#000";
+        ctx.font = "900 60px Arial, Helvetica, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(titleEl.textContent, W / 2, TOP / 2 + 2);
+
+        // Mini calendars: month title on top, then a letter header row and
+        // the day cells inside each .mini-grid.
+        [["mini-left", 4], ["mini-right", W - 4 - 224]].forEach(([id, x0]) => {
+          const mini = document.getElementById(id);
+          ctx.font = "700 13px Arial, Helvetica, sans-serif";
+          ctx.fillText(mini.querySelector(".mini-title").textContent, x0 + 112, 4 + 7.5);
+          ctx.font = "600 12px Arial, Helvetica, sans-serif";
+          mini.querySelectorAll(".mini-grid span").forEach((span, i) => {
+            if (!span.textContent) return;
+            const col = i % 7, row = Math.floor(i / 7);
+            ctx.fillText(span.textContent, x0 + col * (224 / 7) + 224 / 14, 4 + 15 + row * 14 + 7);
+          });
+        });
+
+        // Weekday bar
+        ctx.fillStyle = "#4d80bb";
+        ctx.fillRect(0, TOP, W, WEEKDAY_H);
+        ctx.strokeStyle = "#0f0f0f";
+        ctx.beginPath();
+        ctx.moveTo(0, TOP + 0.5);
+        ctx.lineTo(W, TOP + 0.5);
+        ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, TOP + WEEKDAY_H - 1);
+        ctx.lineTo(W, TOP + WEEKDAY_H - 1);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#fff";
+        ctx.font = "800 16px Arial, Helvetica, sans-serif";
+        document.querySelectorAll(".weekday").forEach((el, i) => {
+          ctx.fillText(el.textContent, i * colW + colW / 2, TOP + WEEKDAY_H / 2);
+          if (i < COLS - 1) {
+            ctx.beginPath();
+            ctx.moveTo((i + 1) * colW, TOP);
+            ctx.lineTo((i + 1) * colW, TOP + WEEKDAY_H);
+            ctx.stroke();
+          }
+        });
+
+        // Day grid
+        const ef = eventsFont(state.tagsPerDay);
+        gridEl.querySelectorAll(".day").forEach((cell, i) => {
+          const col = i % COLS, row = Math.floor(i / COLS);
+          const x = col * colW, y = GRID_Y + row * rowH;
+          const muted = cell.classList.contains("muted");
+
+          if (muted) {
+            ctx.fillStyle = "#d9d9d9";
+            ctx.fillRect(x, y, colW, rowH);
+          }
+          ctx.strokeStyle = "#222";
+          if (col < COLS - 1) {
+            ctx.beginPath();
+            ctx.moveTo(x + colW, y);
+            ctx.lineTo(x + colW, y + rowH);
+            ctx.stroke();
+          }
+          if (row < ROWS - 1) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + rowH);
+            ctx.lineTo(x + colW, y + rowH);
+            ctx.stroke();
+          }
+
+          ctx.fillStyle = muted ? "#555" : "#000";
+          ctx.font = "400 16px Arial, Helvetica, sans-serif";
+          ctx.textAlign = "right";
+          ctx.textBaseline = "top";
+          ctx.fillText(cell.querySelector(".date").textContent, x + colW - 5, y + 3);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x, y, colW, rowH);
+          ctx.clip();
+          ctx.fillStyle = "#000";
+          ctx.font = "500 " + ef.size + "px Arial, Helvetica, sans-serif";
+          ctx.textAlign = "left";
+          // 10px side padding matches the .day CSS padding.
+          const lines = wrapLines(ctx, eventLines(cell.querySelector(".events")), colW - 20);
+          lines.forEach((line, li) => {
+            ctx.fillText(line, x + 10, y + ef.padTop + li * ef.size * ef.lh);
+          });
+          ctx.restore();
+        });
+
+        // Outer border
+        ctx.strokeStyle = "#222";
+        ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+        const a = document.createElement("a");
+        a.download = MONTHS[state.month].toLowerCase() + "-" + state.year + "-calendar.png";
+        a.href = canvas.toDataURL("image/png");
+        a.click();
+      }
+
+      document.getElementById("download-png").addEventListener("click", downloadPNG);
+
+      document.getElementById("clear-month").addEventListener("click", () => {
+        const label = MONTHS[state.month] + " " + state.year;
+        if (!window.confirm("Clear all posts for " + label + "?")) return;
+        for (let d = 1; d <= daysInMonth(state.year, state.month); d++) {
+          window.localStorage.removeItem(eventsKey(state.year, state.month, d));
+        }
+        render();
+      });
+
+      document.getElementById("clear-all").addEventListener("click", () => {
+        if (!window.confirm("Clear saved posts and titles for ALL months?")) return;
+        const toRemove = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && (key.startsWith(prefix + "events-") || key.startsWith(prefix + "title-"))) {
+            toRemove.push(key);
+          }
+        }
+        toRemove.forEach((key) => window.localStorage.removeItem(key));
+        render();
+      });
+
+      render();
+      renderRows();
+      renderConsecutiveTags();
+    })();
+  </script>
+</body>
+</html>
